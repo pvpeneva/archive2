@@ -224,8 +224,10 @@
             background: white;
             padding: 30px;
             border-radius: 12px;
-            max-width: 500px;
+            max-width: 600px;
             width: 90%;
+            max-height: 90vh;
+            overflow-y: auto;
             box-shadow: 0 10px 40px rgba(0,0,0,0.3);
         }
         
@@ -508,17 +510,19 @@
             display: flex;
             gap: 10px;
             margin-top: 10px;
+            flex-wrap: wrap;
         }
         
         .btn {
-            padding: 12px 24px;
+            padding: 12px 20px;
             border: none;
             border-radius: 8px;
-            font-size: 1em;
+            font-size: 0.95em;
             font-weight: 600;
             cursor: pointer;
             transition: all 0.3s;
             flex: 1;
+            min-width: 140px;
         }
         
         .btn-primary {
@@ -538,6 +542,16 @@
         
         .btn-secondary:hover {
             background: #dee2e6;
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            color: white;
+        }
+        
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4);
         }
         
         .section-divider {
@@ -716,8 +730,16 @@
     <div class="modal" id="sheetModal">
         <div class="modal-content">
             <div class="modal-header" id="modalTitle">Add New Sheet</div>
-            <input type="text" class="modal-input" id="sheetName" placeholder="Sheet Name (e.g., DUCKWITZ EDL)">
+            <input type="text" class="modal-input" id="sheetEpisode" placeholder="Episode Number (e.g., 01, 02, 03...)">
+            <input type="text" class="modal-input" id="sheetName" placeholder="Sheet Name (e.g., Duckwitz, Smith Archive)">
             <input type="text" class="modal-input" id="sheetUrl" placeholder="Apps Script Web App URL">
+            
+            <div style="margin-top: 20px; margin-bottom: 10px; font-weight: 600; color: #667eea;">Header Information (for exports)</div>
+            <input type="text" class="modal-input" id="sheetProduction" placeholder="Production Company (e.g., Michael W. King Productions, LLC., USA)">
+            <input type="text" class="modal-input" id="sheetProject" placeholder="Film Project (e.g., The Rescuers)">
+            <input type="text" class="modal-input" id="sheetResearcher" placeholder="Researcher Name (e.g., Frank Drauschke)">
+            <input type="text" class="modal-input" id="sheetContact" placeholder="Contact Email (e.g., research@drauschke.de)">
+            
             <div class="modal-buttons">
                 <button class="modal-btn-save" onclick="saveSheet()">Save</button>
                 <button class="modal-btn-cancel" onclick="closeModal()">Cancel</button>
@@ -736,6 +758,7 @@
             </div>
             <h1>🎬 Live Archive Report</h1>
             <p>Real-time Footage Database • Film & Video Archives</p>
+            <p id="activeSheetDisplay" style="margin-top: 10px; font-size: 0.9em; opacity: 0.8;"></p>
         </div>
         
         <div class="toggle-setup" onclick="toggleSetup()">
@@ -866,6 +889,14 @@
             </div>
         </div>
         
+        <!-- Header Info Display on Page -->
+        <div id="headerInfoDisplay" style="display: none; padding: 20px 40px; background: #f8f9fa; border-bottom: 2px solid #e9ecef;">
+            <div style="background: white; padding: 20px; border-radius: 8px; border-left: 4px solid #667eea;">
+                <h3 style="color: #667eea; margin-bottom: 15px;">📋 Sheet Information</h3>
+                <div id="headerInfoContent" style="line-height: 1.8; color: #495057;"></div>
+            </div>
+        </div>
+        
         <div class="controls">
             <div class="control-group">
                 <label for="searchInput">🔍 Search</label>
@@ -903,7 +934,9 @@
             <div class="button-group">
                 <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
                 <button class="btn btn-secondary" onclick="resetFilters()">Reset All</button>
-                <button class="btn btn-secondary" onclick="copyToEmail()">📋 Copy for Email</button>
+                <button class="btn btn-success" onclick="copyPlainText()">📋 Copy as Table</button>
+                <button class="btn btn-success" onclick="copyAsTable()">📊 Copy with Summary</button>
+                <button class="btn btn-success" onclick="copyForNotes()">📝 Copy for Notes</button>
                 <button class="btn btn-secondary" onclick="window.print()">🖨️ Print</button>
             </div>
         </div>
@@ -924,15 +957,53 @@
         let savedSheets = [];
         let currentSheetId = null;
         let editingSheetId = null;
+        let currentSheetName = '';
+        let currentSheetInfo = {};
         
         function loadSavedSheets() {
             const saved = localStorage.getItem('savedSheets');
             savedSheets = saved ? JSON.parse(saved) : [];
+            
+            // Check URL parameters for auto-import and auto-load
+            const urlParams = new URLSearchParams(window.location.search);
+            const sheetId = urlParams.get('sheet');
+            const episode = urlParams.get('episode');
+            const name = urlParams.get('name');
+            const url = urlParams.get('url');
+            const production = urlParams.get('production');
+            const project = urlParams.get('project');
+            const researcher = urlParams.get('researcher');
+            const contact = urlParams.get('contact');
+            
+            // Auto-import sheet if not exists
+            if (sheetId && name && url && !savedSheets.find(s => s.id === sheetId)) {
+                const newSheet = {
+                    id: sheetId,
+                    episode: decodeURIComponent(episode || ''),
+                    name: decodeURIComponent(name),
+                    url: decodeURIComponent(url),
+                    production: decodeURIComponent(production || ''),
+                    project: decodeURIComponent(project || ''),
+                    researcher: decodeURIComponent(researcher || ''),
+                    contact: decodeURIComponent(contact || ''),
+                    addedAt: new Date().toISOString()
+                };
+                savedSheets.push(newSheet);
+                localStorage.setItem('savedSheets', JSON.stringify(savedSheets));
+                alert('✅ Sheet imported automatically!\n\n' + (newSheet.episode ? newSheet.episode + '_' : '') + newSheet.name);
+            }
+            
             renderSheetList();
             
-            const lastActive = localStorage.getItem('lastActiveSheet');
-            if (lastActive && savedSheets.find(s => s.id === lastActive)) {
-                loadSheet(lastActive);
+            // Auto-load sheet from URL parameter
+            if (sheetId && savedSheets.find(s => s.id === sheetId)) {
+                loadSheet(sheetId);
+            } else {
+                // Load last active sheet
+                const lastActive = localStorage.getItem('lastActiveSheet');
+                if (lastActive && savedSheets.find(s => s.id === lastActive)) {
+                    loadSheet(lastActive);
+                }
             }
         }
         
@@ -947,16 +1018,57 @@
                 list.style.display = 'block';
                 emptyState.style.display = 'none';
                 
-                list.innerHTML = savedSheets.map(sheet => `
+                const sortedSheets = [...savedSheets].sort((a, b) => {
+                    const epA = a.episode || '999';
+                    const epB = b.episode || '999';
+                    return epA.localeCompare(epB);
+                });
+                
+                list.innerHTML = sortedSheets.map(sheet => {
+                    const displayName = sheet.episode ? `${sheet.episode}_${sheet.name}` : sheet.name;
+                    return `
                     <li class="sheet-item ${sheet.id === currentSheetId ? 'active' : ''}" onclick="loadSheet('${sheet.id}')">
-                        <div class="sheet-item-name">${sheet.name}</div>
+                        <div class="sheet-item-name">${displayName}</div>
                         <div class="sheet-item-url">${sheet.url.substring(0, 40)}...</div>
                         <div class="sheet-item-actions" onclick="event.stopPropagation()">
+                            <button class="action-btn" onclick="shareSheet('${sheet.id}')" title="Copy Share Link">🔗</button>
                             <button class="action-btn" onclick="editSheet('${sheet.id}')" title="Edit">✏️</button>
                             <button class="action-btn delete" onclick="deleteSheet('${sheet.id}')" title="Delete">🗑️</button>
                         </div>
                     </li>
-                `).join('');
+                `;
+                }).join('');
+            }
+        }
+        
+        function shareSheet(id) {
+            const sheet = savedSheets.find(s => s.id === id);
+            if (!sheet) return;
+            
+            // Create share URL with all parameters
+            const params = new URLSearchParams({
+                sheet: sheet.id,
+                episode: sheet.episode || '',
+                name: sheet.name,
+                url: sheet.url,
+                production: sheet.production || '',
+                project: sheet.project || '',
+                researcher: sheet.researcher || '',
+                contact: sheet.contact || ''
+            });
+            
+            const shareUrl = window.location.origin + window.location.pathname + '?' + params.toString();
+            const displayName = sheet.episode ? `${sheet.episode}_${sheet.name}` : sheet.name;
+            
+            // Copy to clipboard
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(shareUrl).then(() => {
+                    alert('✅ Share link copied!\n\n📋 ' + displayName + '\n\n🔗 Anyone who opens this link will automatically have access to this sheet!\n\nJust send them the link and they\'re ready to go! 🚀');
+                }).catch(() => {
+                    prompt('Copy this link to share:', shareUrl);
+                });
+            } else {
+                prompt('Copy this link to share:', shareUrl);
             }
         }
         
@@ -977,8 +1089,13 @@
         function showAddSheetModal() {
             editingSheetId = null;
             document.getElementById('modalTitle').textContent = 'Add New Sheet';
+            document.getElementById('sheetEpisode').value = '';
             document.getElementById('sheetName').value = '';
             document.getElementById('sheetUrl').value = '';
+            document.getElementById('sheetProduction').value = '';
+            document.getElementById('sheetProject').value = '';
+            document.getElementById('sheetResearcher').value = '';
+            document.getElementById('sheetContact').value = '';
             document.getElementById('sheetModal').classList.add('show');
         }
         
@@ -988,8 +1105,13 @@
             
             editingSheetId = id;
             document.getElementById('modalTitle').textContent = 'Edit Sheet';
+            document.getElementById('sheetEpisode').value = sheet.episode || '';
             document.getElementById('sheetName').value = sheet.name;
             document.getElementById('sheetUrl').value = sheet.url;
+            document.getElementById('sheetProduction').value = sheet.production || '';
+            document.getElementById('sheetProject').value = sheet.project || '';
+            document.getElementById('sheetResearcher').value = sheet.researcher || '';
+            document.getElementById('sheetContact').value = sheet.contact || '';
             document.getElementById('sheetModal').classList.add('show');
         }
         
@@ -999,8 +1121,13 @@
         }
         
         function saveSheet() {
+            const episode = document.getElementById('sheetEpisode').value.trim();
             const name = document.getElementById('sheetName').value.trim();
             const url = document.getElementById('sheetUrl').value.trim();
+            const production = document.getElementById('sheetProduction').value.trim();
+            const project = document.getElementById('sheetProject').value.trim();
+            const researcher = document.getElementById('sheetResearcher').value.trim();
+            const contact = document.getElementById('sheetContact').value.trim();
             
             if (!name) {
                 alert('Please enter a name for this sheet');
@@ -1015,14 +1142,24 @@
             if (editingSheetId) {
                 const sheet = savedSheets.find(s => s.id === editingSheetId);
                 if (sheet) {
+                    sheet.episode = episode;
                     sheet.name = name;
                     sheet.url = url;
+                    sheet.production = production;
+                    sheet.project = project;
+                    sheet.researcher = researcher;
+                    sheet.contact = contact;
                 }
             } else {
                 const newSheet = {
                     id: 'sheet_' + Date.now(),
+                    episode: episode,
                     name: name,
                     url: url,
+                    production: production,
+                    project: project,
+                    researcher: researcher,
+                    contact: contact,
                     addedAt: new Date().toISOString()
                 };
                 savedSheets.push(newSheet);
@@ -1058,13 +1195,57 @@
             
             currentSheetId = id;
             connectedUrl = sheet.url;
+            currentSheetName = sheet.episode ? `${sheet.episode}_${sheet.name}` : sheet.name;
+            currentSheetInfo = {
+                production: sheet.production || '',
+                project: sheet.project || '',
+                episode: sheet.episode || '',
+                name: sheet.name || '',
+                researcher: sheet.researcher || '',
+                contact: sheet.contact || ''
+            };
             localStorage.setItem('lastActiveSheet', id);
+            
+            // Update active sheet display
+            document.getElementById('activeSheetDisplay').textContent = '📂 Active: ' + currentSheetName;
+            
+            // Update header info display on page
+            updateHeaderInfoDisplay();
             
             document.getElementById('appsScriptUrl').value = sheet.url;
             renderSheetList();
             closeSidebar();
             
             refreshData();
+        }
+        
+        function updateHeaderInfoDisplay() {
+            const display = document.getElementById('headerInfoDisplay');
+            const content = document.getElementById('headerInfoContent');
+            
+            if (currentSheetInfo.production || currentSheetInfo.project || currentSheetInfo.researcher) {
+                let html = '';
+                if (currentSheetInfo.production) {
+                    html += '<div><strong>Production company:</strong> ' + currentSheetInfo.production + '</div>';
+                }
+                if (currentSheetInfo.project) {
+                    html += '<div><strong>Film project:</strong> ' + currentSheetInfo.project + '</div>';
+                }
+                if (currentSheetInfo.episode || currentSheetInfo.name) {
+                    const episodeName = currentSheetInfo.episode ? currentSheetInfo.episode + ' ' + currentSheetInfo.name : currentSheetInfo.name;
+                    html += '<div><strong>Episode:</strong> ' + episodeName + '</div>';
+                }
+                if (currentSheetInfo.researcher) {
+                    html += '<div><strong>Researcher:</strong> ' + currentSheetInfo.researcher + '</div>';
+                }
+                if (currentSheetInfo.contact) {
+                    html += '<div><strong>Contact:</strong> ' + currentSheetInfo.contact + '</div>';
+                }
+                content.innerHTML = html;
+                display.style.display = 'block';
+            } else {
+                display.style.display = 'none';
+            }
         }
         
         function testConnection() {
@@ -1416,11 +1597,136 @@
             document.getElementById('stillsArchives').textContent = stillsData.length;
         }
         
-        function copyToEmail() {
+        function copyPlainText() {
             const dataToUse = (filteredData && filteredData.length > 0) ? filteredData : archiveData;
             
             if (!dataToUse || dataToUse.length === 0) {
-                alert('⚠️ No data to copy!\n\nPlease:\n1. Click the ☰ menu\n2. Select a sheet\n3. Wait for data to load\n4. Then try copying again');
+                alert('⚠️ No data to copy!\n\nPlease load a sheet first.');
+                return;
+            }
+            
+            const videoData = dataToUse.filter(a => a.type === 'video');
+            const stillsData = dataToUse.filter(a => a.type === 'stills');
+            
+            let html = '<html><head><style>';
+            html += 'body { font-family: Arial, sans-serif; font-size: 11pt; }';
+            html += 'table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }';
+            html += 'th { background: #f0f0f0; color: black; padding: 8px; text-align: left; font-weight: bold; border: 1px solid #ccc; }';
+            html += 'td { padding: 8px; border: 1px solid #ccc; }';
+            html += 'tr:nth-child(even) { background-color: #fafafa; }';
+            html += '.main-title { font-size: 18pt; font-weight: bold; color: #667eea; margin-bottom: 20px; padding: 15px; background: #f0f0f0; border-radius: 8px; text-align: center; }';
+            html += '.archive-name { font-weight: bold; margin-top: 15px; margin-bottom: 5px; font-size: 12pt; }';
+            html += '.total-row { background: #e8e8e8; font-weight: bold; }';
+            html += '.section-title { font-weight: bold; font-size: 13pt; margin: 20px 0 10px 0; padding: 8px; background: #f5f5f5; border-left: 4px solid #666; }';
+            html += 'a { color: #0066cc; text-decoration: none; }';
+            html += '</style></head><body>';
+            
+            // Add main title with sheet name
+            if (currentSheetName) {
+                html += '<div class="main-title">📽️ ' + currentSheetName + '</div>';
+            }
+            
+            // Add header information
+            if (currentSheetInfo.production || currentSheetInfo.project || currentSheetInfo.researcher) {
+                html += '<table style="width: 100%; margin-bottom: 20px; border: 2px solid #667eea; background: #f8f9fa;">';
+                html += '<tr style="background: #667eea;"><td colspan="2" style="padding: 12px; color: white; font-weight: bold; font-size: 14pt;">Sheet Information</td></tr>';
+                
+                if (currentSheetInfo.production) {
+                    html += '<tr><td style="padding: 10px; font-weight: bold; color: #667eea; width: 200px; border: 1px solid #dee;">Production company:</td>';
+                    html += '<td style="padding: 10px; border: 1px solid #dee;">' + currentSheetInfo.production + '</td></tr>';
+                }
+                if (currentSheetInfo.project) {
+                    html += '<tr><td style="padding: 10px; font-weight: bold; color: #667eea; border: 1px solid #dee;">Film project:</td>';
+                    html += '<td style="padding: 10px; border: 1px solid #dee;">' + currentSheetInfo.project + '</td></tr>';
+                }
+                if (currentSheetInfo.episode || currentSheetInfo.name) {
+                    const episodeName = currentSheetInfo.episode ? currentSheetInfo.episode + ' ' + currentSheetInfo.name : currentSheetInfo.name;
+                    html += '<tr><td style="padding: 10px; font-weight: bold; color: #667eea; border: 1px solid #dee;">Episode:</td>';
+                    html += '<td style="padding: 10px; border: 1px solid #dee;">' + episodeName + '</td></tr>';
+                }
+                if (currentSheetInfo.researcher) {
+                    html += '<tr><td style="padding: 10px; font-weight: bold; color: #667eea; border: 1px solid #dee;">Researcher:</td>';
+                    html += '<td style="padding: 10px; border: 1px solid #dee;">' + currentSheetInfo.researcher + '</td></tr>';
+                }
+                if (currentSheetInfo.contact) {
+                    html += '<tr><td style="padding: 10px; font-weight: bold; color: #667eea; border: 1px solid #dee;">Contact:</td>';
+                    html += '<td style="padding: 10px; border: 1px solid #dee;">' + currentSheetInfo.contact + '</td></tr>';
+                }
+                html += '</table>';
+            }
+            
+            if (videoData.length > 0) {
+                html += '<div class="section-title">VIDEO ARCHIVES</div>';
+                
+                videoData.forEach(archive => {
+                    html += '<div class="archive-name">' + archive.name + ' (' + archive.clips.length + ' clips)</div>';
+                    html += '<table>';
+                    html += '<thead><tr>';
+                    html += '<th>#</th><th>ID</th><th>Inv No</th><th>File Name</th><th>Source In</th><th>Source Out</th><th>Duration</th><th>Link</th>';
+                    html += '</tr></thead>';
+                    html += '<tbody>';
+                    
+                    archive.clips.forEach((clip, i) => {
+                        html += '<tr>';
+                        html += '<td>' + (i + 1) + '</td>';
+                        html += '<td>' + (clip.id || '') + '</td>';
+                        html += '<td>' + (clip.invNo || '') + '</td>';
+                        html += '<td>' + (clip.fileName || '') + '</td>';
+                        html += '<td>' + (clip.sourceIn || '') + '</td>';
+                        html += '<td>' + (clip.sourceOut || '') + '</td>';
+                        html += '<td>' + (clip.duration || '00:00:00:00') + '</td>';
+                        html += '<td>' + (clip.link ? '<a href="' + clip.link + '">🔗</a>' : '') + '</td>';
+                        html += '</tr>';
+                    });
+                    
+                    html += '<tr class="total-row">';
+                    html += '<td colspan="6">TOTAL</td>';
+                    html += '<td>' + archive.duration + '</td>';
+                    html += '<td></td>';
+                    html += '</tr>';
+                    html += '</tbody></table>';
+                });
+            }
+            
+            if (stillsData.length > 0) {
+                html += '<div class="section-title">STILLS / IMAGES</div>';
+                
+                stillsData.forEach(archive => {
+                    html += '<div class="archive-name">' + archive.name + ' (' + archive.entries + ' stills)</div>';
+                    html += '<table>';
+                    html += '<thead><tr>';
+                    html += '<th>#</th><th>ID</th><th>Inv No</th><th>File Name</th><th>Type</th><th>Link</th>';
+                    html += '</tr></thead>';
+                    html += '<tbody>';
+                    
+                    archive.clips.forEach((clip, i) => {
+                        html += '<tr>';
+                        html += '<td>' + (i + 1) + '</td>';
+                        html += '<td>' + (clip.id || '') + '</td>';
+                        html += '<td>' + (clip.invNo || '') + '</td>';
+                        html += '<td>' + (clip.fileName || '') + '</td>';
+                        html += '<td>Still Image</td>';
+                        html += '<td>' + (clip.link ? '<a href="' + clip.link + '">🔗</a>' : '') + '</td>';
+                        html += '</tr>';
+                    });
+                    
+                    html += '<tr class="total-row">';
+                    html += '<td colspan="6">TOTAL: ' + archive.entries + ' Still Images</td>';
+                    html += '</tr>';
+                    html += '</tbody></table>';
+                });
+            }
+            
+            html += '</body></html>';
+            
+            copyFormattedContent(html);
+        }
+        
+        function copyAsTable() {
+            const dataToUse = (filteredData && filteredData.length > 0) ? filteredData : archiveData;
+            
+            if (!dataToUse || dataToUse.length === 0) {
+                alert('⚠️ No data to copy!\n\nPlease load a sheet first.');
                 return;
             }
             
@@ -1431,148 +1737,172 @@
             const totalFrames = videoData.reduce((sum, a) => sum + a.totalFrames, 0);
             const videoDuration = framesToTimecode(totalFrames);
             
-            let emailText = '╔═══════════════════════════════════════╗\n';
-            emailText += '📊 ARCHIVE REPORT SUMMARY\n';
-            emailText += '╚═══════════════════════════════════════╝\n\n';
+            let html = '<html><head><style>';
+            html += 'body { font-family: Arial, sans-serif; }';
+            html += 'table { border-collapse: collapse; width: 100%; margin-bottom: 30px; }';
+            html += 'th { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 12px; text-align: left; font-weight: bold; border: 1px solid #ddd; }';
+            html += 'td { padding: 10px; border: 1px solid #ddd; }';
+            html += 'tr:nth-child(even) { background-color: #f8f9fa; }';
+            html += 'tr:hover { background-color: #e9ecef; }';
+            html += '.total-row { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; font-weight: bold; }';
+            html += '.total-row.stills { background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%); }';
+            html += '.archive-header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px; margin-top: 20px; font-size: 1.2em; font-weight: bold; border-radius: 8px 8px 0 0; }';
+            html += '.archive-header.stills { background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%); }';
+            html += '.section-title { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; font-size: 1.5em; font-weight: bold; margin: 30px 0 20px 0; border-radius: 8px; }';
+            html += '.section-title.stills { background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%); }';
+            html += '.main-title { font-size: 24pt; font-weight: bold; color: white; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin-bottom: 30px; padding: 25px; border-radius: 12px; text-align: center; }';
+            html += '.summary { background: #f8f9fa; padding: 20px; margin-bottom: 30px; border-radius: 8px; border: 2px solid #667eea; }';
+            html += '.summary h2 { color: #667eea; margin-bottom: 15px; }';
+            html += '.summary-row { display: flex; justify-content: space-between; margin: 10px 0; }';
+            html += '.summary-label { font-weight: bold; color: #495057; }';
+            html += '.summary-value { color: #667eea; font-weight: bold; }';
+            html += 'a { color: #667eea; text-decoration: none; }';
+            html += '</style></head><body>';
             
-            emailText += '🔹 VIDEO FOOTAGE:\n';
-            emailText += '   • Video Clips: ' + videoClips + '\n';
-            emailText += '   • Video Archives: ' + videoData.length + '\n';
-            emailText += '   • Total Duration: ' + videoDuration + '\n\n';
+            // Add main title with sheet name
+            if (currentSheetName) {
+                html += '<div class="main-title">📽️ ' + currentSheetName + '</div>';
+            }
             
-            emailText += '📷 STILLS/IMAGES:\n';
-            emailText += '   • Still Images: ' + stillsCount + '\n';
-            emailText += '   • Stills Archives: ' + stillsData.length + '\n\n';
+            // Add header information
+            if (currentSheetInfo.production || currentSheetInfo.project || currentSheetInfo.researcher) {
+                html += '<table style="width: 100%; margin-bottom: 20px; border: 2px solid #667eea; background: #f8f9fa;">';
+                html += '<tr style="background: #667eea;"><td colspan="2" style="padding: 12px; color: white; font-weight: bold; font-size: 14pt;">Sheet Information</td></tr>';
+                
+                if (currentSheetInfo.production) {
+                    html += '<tr><td style="padding: 10px; font-weight: bold; color: #667eea; width: 200px; border: 1px solid #dee;">Production company:</td>';
+                    html += '<td style="padding: 10px; border: 1px solid #dee;">' + currentSheetInfo.production + '</td></tr>';
+                }
+                if (currentSheetInfo.project) {
+                    html += '<tr><td style="padding: 10px; font-weight: bold; color: #667eea; border: 1px solid #dee;">Film project:</td>';
+                    html += '<td style="padding: 10px; border: 1px solid #dee;">' + currentSheetInfo.project + '</td></tr>';
+                }
+                if (currentSheetInfo.episode || currentSheetInfo.name) {
+                    const episodeName = currentSheetInfo.episode ? currentSheetInfo.episode + ' ' + currentSheetInfo.name : currentSheetInfo.name;
+                    html += '<tr><td style="padding: 10px; font-weight: bold; color: #667eea; border: 1px solid #dee;">Episode:</td>';
+                    html += '<td style="padding: 10px; border: 1px solid #dee;">' + episodeName + '</td></tr>';
+                }
+                if (currentSheetInfo.researcher) {
+                    html += '<tr><td style="padding: 10px; font-weight: bold; color: #667eea; border: 1px solid #dee;">Researcher:</td>';
+                    html += '<td style="padding: 10px; border: 1px solid #dee;">' + currentSheetInfo.researcher + '</td></tr>';
+                }
+                if (currentSheetInfo.contact) {
+                    html += '<tr><td style="padding: 10px; font-weight: bold; color: #667eea; border: 1px solid #dee;">Contact:</td>';
+                    html += '<td style="padding: 10px; border: 1px solid #dee;">' + currentSheetInfo.contact + '</td></tr>';
+                }
+                html += '</table>';
+            }
             
-            emailText += '═══════════════════════════════════════\n\n';
+            html += '<div class="summary">';
+            html += '<h2>📊 ARCHIVE REPORT SUMMARY</h2>';
+            html += '<div class="summary-row"><span class="summary-label">Video Clips:</span><span class="summary-value">' + videoClips + '</span></div>';
+            html += '<div class="summary-row"><span class="summary-label">Video Archives:</span><span class="summary-value">' + videoData.length + '</span></div>';
+            html += '<div class="summary-row"><span class="summary-label">Total Duration:</span><span class="summary-value">' + videoDuration + '</span></div>';
+            html += '<div class="summary-row"><span class="summary-label">Still Images:</span><span class="summary-value">' + stillsCount + '</span></div>';
+            html += '<div class="summary-row"><span class="summary-label">Stills Archives:</span><span class="summary-value">' + stillsData.length + '</span></div>';
+            html += '</div>';
             
             if (videoData.length > 0) {
-                emailText += '🎬 VIDEO ARCHIVES DETAIL:\n\n';
+                html += '<div class="section-title">🎬 VIDEO ARCHIVES</div>';
                 
                 videoData.forEach(archive => {
-                    emailText += '┌─────────────────────────────────────┐\n';
-                    emailText += '📁 ' + archive.name + '\n';
-                    emailText += '   Clips: ' + archive.clips.length + ' | Duration: ' + archive.duration + '\n';
-                    emailText += '└─────────────────────────────────────┘\n\n';
+                    html += '<div class="archive-header">' + archive.name + ' (' + archive.clips.length + ' clips)</div>';
+                    html += '<table>';
+                    html += '<thead><tr>';
+                    html += '<th>#</th><th>ID</th><th>Inv No</th><th>File Name</th><th>Source In</th><th>Source Out</th><th>Duration</th><th>Link</th>';
+                    html += '</tr></thead>';
+                    html += '<tbody>';
                     
                     archive.clips.forEach((clip, i) => {
-                        emailText += (i + 1) + '. ';
-                        if (clip.id) emailText += 'ID: ' + clip.id + ' | ';
-                        if (clip.invNo) emailText += 'Inv: ' + clip.invNo + ' | ';
-                        emailText += (clip.fileName || 'Unnamed') + '\n';
-                        emailText += '   Duration: ' + clip.duration;
-                        if (clip.sourceIn) emailText += ' | In: ' + clip.sourceIn;
-                        if (clip.sourceOut) emailText += ' | Out: ' + clip.sourceOut;
-                        emailText += '\n';
-                        if (clip.link) emailText += '   Link: ' + clip.link + '\n';
-                        emailText += '\n';
+                        html += '<tr>';
+                        html += '<td>' + (i + 1) + '</td>';
+                        html += '<td>' + (clip.id || '') + '</td>';
+                        html += '<td>' + (clip.invNo || '') + '</td>';
+                        html += '<td>' + (clip.fileName || '') + '</td>';
+                        html += '<td>' + (clip.sourceIn || '') + '</td>';
+                        html += '<td>' + (clip.sourceOut || '') + '</td>';
+                        html += '<td>' + (clip.duration || '00:00:00:00') + '</td>';
+                        html += '<td>' + (clip.link ? '<a href="' + clip.link + '">🔗</a>' : '') + '</td>';
+                        html += '</tr>';
                     });
                     
-                    emailText += 'TOTAL: ' + archive.duration + '\n\n\n';
+                    html += '<tr class="total-row">';
+                    html += '<td colspan="6"><strong>TOTAL</strong></td>';
+                    html += '<td><strong>' + archive.duration + '</strong></td>';
+                    html += '<td></td>';
+                    html += '</tr>';
+                    html += '</tbody></table>';
                 });
             }
             
             if (stillsData.length > 0) {
-                emailText += '📷 STILLS/IMAGES ARCHIVES DETAIL:\n\n';
+                html += '<div class="section-title stills">📷 STILLS / IMAGES</div>';
                 
                 stillsData.forEach(archive => {
-                    emailText += '┌─────────────────────────────────────┐\n';
-                    emailText += '📁 ' + archive.name + '\n';
-                    emailText += '   Images: ' + archive.entries + '\n';
-                    emailText += '└─────────────────────────────────────┘\n\n';
+                    html += '<div class="archive-header stills">' + archive.name + ' (' + archive.entries + ' stills)</div>';
+                    html += '<table>';
+                    html += '<thead><tr>';
+                    html += '<th>#</th><th>ID</th><th>Inv No</th><th>File Name</th><th>Type</th><th>Link</th>';
+                    html += '</tr></thead>';
+                    html += '<tbody>';
                     
                     archive.clips.forEach((clip, i) => {
-                        emailText += (i + 1) + '. ';
-                        if (clip.id) emailText += 'ID: ' + clip.id + ' | ';
-                        if (clip.invNo) emailText += 'Inv: ' + clip.invNo + ' | ';
-                        emailText += (clip.fileName || 'Unnamed') + '\n';
-                        if (clip.link) emailText += '   Link: ' + clip.link + '\n';
-                        emailText += '\n';
+                        html += '<tr>';
+                        html += '<td>' + (i + 1) + '</td>';
+                        html += '<td>' + (clip.id || '') + '</td>';
+                        html += '<td>' + (clip.invNo || '') + '</td>';
+                        html += '<td>' + (clip.fileName || '') + '</td>';
+                        html += '<td>Still Image</td>';
+                        html += '<td>' + (clip.link ? '<a href="' + clip.link + '">🔗</a>' : '') + '</td>';
+                        html += '</tr>';
                     });
                     
-                    emailText += 'TOTAL: ' + archive.entries + ' Still Images\n\n\n';
+                    html += '<tr class="total-row stills">';
+                    html += '<td colspan="6"><strong>TOTAL: ' + archive.entries + ' Still Images</strong></td>';
+                    html += '</tr>';
+                    html += '</tbody></table>';
                 });
             }
             
-            emailText += '═══════════════════════════════════════\n';
-            emailText += 'Generated: ' + new Date().toLocaleString() + '\n';
-            emailText += 'Source: Live Archive Report Tool\n';
-            emailText += '═══════════════════════════════════════';
+            html += '</body></html>';
             
-            const copySuccess = () => {
-                alert('✅ SUCCESS!\n\nReport copied to clipboard!\n\nNow you can:\n1. Open your email\n2. Press Ctrl+V (or Cmd+V)\n3. Paste the report');
-            };
-            
-            const copyFallback = () => {
-                const textArea = document.createElement('textarea');
-                textArea.value = emailText;
-                textArea.style.position = 'fixed';
-                textArea.style.top = '0';
-                textArea.style.left = '0';
-                textArea.style.width = '2em';
-                textArea.style.height = '2em';
-                textArea.style.padding = '0';
-                textArea.style.border = 'none';
-                textArea.style.outline = 'none';
-                textArea.style.boxShadow = 'none';
-                textArea.style.background = 'transparent';
-                document.body.appendChild(textArea);
-                textArea.focus();
-                textArea.select();
-                
-                try {
-                    const successful = document.execCommand('copy');
-                    document.body.removeChild(textArea);
-                    if (successful) {
-                        copySuccess();
-                    } else {
-                        showCopyPopup(emailText);
-                    }
-                } catch (err) {
-                    document.body.removeChild(textArea);
-                    showCopyPopup(emailText);
-                }
-            };
-            
-            if (navigator.clipboard && window.isSecureContext) {
-                navigator.clipboard.writeText(emailText).then(copySuccess).catch(copyFallback);
-            } else {
-                copyFallback();
-            }
+            copyFormattedContent(html);
         }
         
-        function showCopyPopup(text) {
-            const modal = document.createElement('div');
-            modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:10000;display:flex;align-items:center;justify-content:center';
+        function copyFormattedContent(html) {
+            // Create a temporary container
+            const container = document.createElement('div');
+            container.style.cssText = 'position:fixed;top:-9999px;left:-9999px;';
+            container.innerHTML = html;
+            document.body.appendChild(container);
             
-            const box = document.createElement('div');
-            box.style.cssText = 'background:white;padding:30px;border-radius:12px;max-width:800px;max-height:80vh;overflow:auto';
+            // Select the content
+            const range = document.createRange();
+            range.selectNodeContents(container);
+            const selection = window.getSelection();
+            selection.removeAllRanges();
+            selection.addRange(range);
             
-            const title = document.createElement('h3');
-            title.textContent = '📋 Copy This Text to Your Email';
-            title.style.cssText = 'margin-bottom:20px;color:#667eea';
-            
-            const instructions = document.createElement('p');
-            instructions.innerHTML = '<strong>How to copy:</strong><br>1. Click inside the box below<br>2. Press Ctrl+A (or Cmd+A)<br>3. Press Ctrl+C (or Cmd+C)<br>4. Close this window<br>5. Paste in your email';
-            instructions.style.cssText = 'margin-bottom:20px;line-height:1.8';
-            
-            const textArea = document.createElement('textarea');
-            textArea.value = text;
-            textArea.style.cssText = 'width:100%;height:400px;padding:15px;border:2px solid #667eea;border-radius:8px;font-family:monospace;font-size:12px;margin-bottom:20px';
-            
-            const closeBtn = document.createElement('button');
-            closeBtn.textContent = 'Close';
-            closeBtn.style.cssText = 'padding:12px 30px;background:#667eea;color:white;border:none;border-radius:8px;cursor:pointer;font-size:16px';
-            closeBtn.onclick = () => document.body.removeChild(modal);
-            
-            box.appendChild(title);
-            box.appendChild(instructions);
-            box.appendChild(textArea);
-            box.appendChild(closeBtn);
-            modal.appendChild(box);
-            document.body.appendChild(modal);
-            
-            textArea.select();
+            try {
+                // Copy the selected content
+                const successful = document.execCommand('copy');
+                
+                // Clean up
+                selection.removeAllRanges();
+                document.body.removeChild(container);
+                
+                if (successful) {
+                    alert('✅ SUCCESS!\n\nFormatted table copied!\n\nNow:\n1. Open Gmail/Word/Excel\n2. Press Ctrl+V (or Cmd+V)\n3. See the beautiful table! 🎨');
+                } else {
+                    throw new Error('Copy command failed');
+                }
+            } catch (err) {
+                // Clean up on error
+                if (document.body.contains(container)) {
+                    document.body.removeChild(container);
+                }
+                alert('⚠️ Copy failed. Please try:\n1. Using Chrome or Firefox\n2. Making sure the page is in focus\n3. Clicking the button again');
+            }
         }
         
         window.onload = () => loadSavedSheets();
